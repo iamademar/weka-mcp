@@ -4,7 +4,21 @@ What is this? It's basically the [WEKA](https://ml.cms.waikato.ac.nz/) the machi
 library that allows you to upload data, train/evaluate classifiers, cluster, mine association rules, 
 run diagnostics but served by your favor LLM through **46 typed [Model Context Protocol](https://modelcontextprotocol.io) tools**.
 
-<img width="636" height="432" alt="weka-mcp" src="https://github.com/user-attachments/assets/da3e8bcf-d508-416b-a883-cc1f3083429e" />
+<a href="https://www.youtube.com/watch?v=miYSJ7Ruep4">
+  <img
+    width="1061"
+    height="835"
+    alt="Watch the WEKA over MCP demo on YouTube"
+    src="https://github.com/user-attachments/assets/81848038-eade-44a7-8260-fe8aea7aa331"
+  />
+</a>
+
+<p>
+  <a href="https://www.youtube.com/watch?v=miYSJ7Ruep4">
+    ▶ Watch the demo on YouTube
+  </a>
+</p>
+
 
 Here’s the high-level architecture:
 
