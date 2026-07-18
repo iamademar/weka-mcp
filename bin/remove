@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# Local uninstall for the WEKA-over-MCP stack.
+#
+# Tears down the running stack and removes its Docker runtime artifacts:
+#   - containers, the stack's bridge network, and the weka-models + weka-data volumes
+#   - images built locally by this stack
+# Then removes the generated .env so the recorded host ports are freed.
+#
+# Version-controlled source (compose.yaml, Dockerfiles, code) is LEFT INTACT, so
+# `bin/setup` can rebuild from a clean slate.
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ENV_FILE="${ROOT}/.env"
+
+if ! command -v docker >/dev/null 2>&1; then
+  echo "ERROR: docker not found." >&2
+  exit 1
+fi
+
+echo "==> Tearing down stack (containers, network, volumes, local images)"
+# -v: remove named volumes (weka-models, weka-data).  --rmi local: remove images
+# built by this compose project.  --remove-orphans: sweep any stale services.
+( cd "$ROOT" && docker compose down -v --rmi local --remove-orphans )
+
+if [[ -f "$ENV_FILE" ]]; then
+  echo "==> Removing ${ENV_FILE} (frees the recorded host ports)"
+  rm -f "$ENV_FILE"
+fi
+
+echo ""
+echo "==> Removed. Stack is down, volumes wiped, host ports freed."
+echo "    Source files (compose.yaml, Dockerfiles) were kept — run bin/setup to rebuild."

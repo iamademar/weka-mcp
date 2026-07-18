@@ -1,0 +1,88 @@
+# Standalone WEKA-over-MCP stack.
+#
+#   MCP client ──▶ weka-mcp (:3000 /mcp)  ──▶ weka-api (:7070)  ──▶ WEKA library
+#
+# Both services publish a configurable host port for local testing (weka-mcp on
+# MCP_HOST_PORT, weka-api on WEKA_API_HOST_PORT). The internal mcp→api wiring stays
+# on the service name (weka-api:7070), so these host mappings are purely additive
+# and don't affect it. In the cloud (Azure Container Apps) weka-api is internal-only
+# regardless — the host mapping here is a local-dev convenience.
+#
+# Bring it up:   bin/setup                    (auto-selects free host ports)
+#         or:    docker compose up --build -d  (manual; uses defaults / .env)
+# Health check:  curl -s localhost:3001/healthz
+# Tear down:     bin/remove                    (down -v + frees ports)
+#         or:    docker compose down           (keeps model/data volumes)
+#                docker compose down -v        (also wipes weka-models + weka-data)
+name: weka-mcp-core
+
+services:
+  # --- Java/Javalin REST service wrapping the WEKA library (the real ML) ---
+  weka-api:
+    build:
+      context: ./weka-api
+    # Env vars + defaults are read in weka-api/src/main/java/com/wekaapi/config/Config.java.
+    environment:
+      PORT: "7070"
+      MODELS_DIR: /app/models
+      DATA_DIR: /app/data
+      MAX_UPLOAD_MB: "100"
+      LOG_LEVEL: INFO
+      # The Dockerfile sets no JVM heap flag; under a container memory cap the JVM
+      # can mis-size the heap. Mirror the cloud intent (Container Apps sets the same)
+      # so local behaviour matches production.
+      JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=75.0"
+    volumes:
+      - weka-models:/app/models
+      - weka-data:/app/data
+    networks:
+      - weka-internal
+    # The Dockerfile declares no HEALTHCHECK, but weka-mcp's depends_on needs one.
+    # The JRE runtime image ships wget (not curl); --spider exits non-zero on a
+    # non-2xx response. retries*interval (~2 min) covers the JVM + WEKA cold start.
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:7070/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 40s
+    ports:
+      # Additive host mapping for direct API access / stdio dev. The internal
+      # mcp→api wiring stays on the service name (weka-api:7070) and is unaffected.
+      # Local-dev convenience only; the cloud keeps weka-api internal-only.
+      - "${WEKA_API_HOST_PORT:-7070}:7070"
+    restart: unless-stopped
+
+  # --- TypeScript MCP server: thin forwarder exposing weka-api as 46 MCP tools ---
+  weka-mcp:
+    build:
+      context: ./weka-mcp
+    # Env vars + defaults: weka-mcp/src/config.ts (WEKA_API_URL, MCP_HTTP_PORT,
+    # INTERNAL_AUTH_SHARED_SECRET) and client.ts (WEKA_API_TIMEOUT_MS).
+    environment:
+      # Reach weka-api by its service name on the internal bridge network.
+      WEKA_API_URL: http://weka-api:7070
+      MCP_HTTP_PORT: "3000"
+      # Kept below the ~240s Container Apps Envoy ceiling (see client.ts).
+      WEKA_API_TIMEOUT_MS: "210000"
+      # INTERNAL_AUTH_SHARED_SECRET intentionally unset locally: requireInternalAuth
+      # skips the X-Internal-Auth check when it's undefined (local/compose dev).
+      # In the cloud, weka-mcp is public and this secret is mandatory.
+    ports:
+      # Host port is configurable (default 3001 to avoid clashing with other local
+      # stacks); the container always listens on 3000. Hit /mcp at localhost:${MCP_HOST_PORT}.
+      - "${MCP_HOST_PORT:-3001}:3000"
+    depends_on:
+      weka-api:
+        condition: service_healthy
+    networks:
+      - weka-internal
+    restart: unless-stopped
+
+networks:
+  weka-internal:
+    driver: bridge
+
+volumes:
+  weka-models:   # serialized .model files  (weka-api /app/models)
+  weka-data:     # uploaded ARFF/CSV datasets (weka-api /app/data)

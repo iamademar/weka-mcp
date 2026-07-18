@@ -1,0 +1,39 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "namePrefix": {
+      "value": "wekamcp"
+    },
+    "mcpExternalIngress": {
+      "value": true
+    },
+    "apiCpu": {
+      "value": "2.0"
+    },
+    "apiMemory": {
+      "value": "4Gi"
+    },
+    "apiMinReplicas": {
+      "value": 0
+    },
+    "apiMaxReplicas": {
+      "value": 1
+    },
+    "mcpCpu": {
+      "value": "0.5"
+    },
+    "mcpMemory": {
+      "value": "1Gi"
+    },
+    "mcpMaxReplicas": {
+      "value": 1
+    },
+    "maxUploadMb": {
+      "value": "20"
+    },
+    "scaleConcurrentRequests": {
+      "value": 20
+    }
+  }
+}

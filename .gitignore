@@ -1,0 +1,19 @@
+# macOS
+.DS_Store
+
+# Env / secrets
+.env
+*.env
+!.env.example
+!**/.env.example
+
+# Claude Code local settings
+.claude/
+
+# Java (weka-api)
+target/
+
+# Node (weka-mcp)
+node_modules/
+dist/
+*.log

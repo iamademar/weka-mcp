@@ -1,0 +1,36 @@
+{
+  "name": "weka-mcp",
+  "version": "0.1.0",
+  "description": "MCP server wrapping the Weka REST API for AI agents",
+  "type": "module",
+  "bin": {
+    "weka-mcp": "dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "start": "node dist/index.js",
+    "start:http": "node dist/http.js",
+    "dev": "node --import tsx --watch src/index.ts",
+    "dev:http": "node --import tsx --watch src/http.ts",
+    "smoke": "node --import tsx scripts/smoke.ts",
+    "test:live": "node --import tsx scripts/test-live.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "express": "^5.0.0",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.0.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

@@ -1,0 +1,127 @@
+#!/usr/bin/env bash
+# Local install for the WEKA-over-MCP stack.
+#
+# Brings the two-container stack up with docker compose, auto-selecting free host
+# ports so it "just works" even when the defaults (weka-mcp 3001, weka-api 7070) are
+# already taken by another local stack. The chosen ports are persisted to a generated
+# .env at the repo root (which compose reads automatically), so re-running setup
+# reuses them when they're still free.
+#
+# Undo with:  bin/remove
+#
+# Config (all optional — normally you just run `bin/setup`):
+#   MCP_HOST_PORT        starting port to probe for weka-mcp   (default 3001)
+#   WEKA_API_HOST_PORT   starting port to probe for weka-api   (default 7070)
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ENV_FILE="${ROOT}/.env"
+
+# --- prerequisites ---
+if ! command -v docker >/dev/null 2>&1; then
+  echo "ERROR: docker not found. Install Docker Desktop / Docker Engine first." >&2
+  exit 1
+fi
+if ! docker compose version >/dev/null 2>&1; then
+  echo "ERROR: 'docker compose' (Compose v2) not available." >&2
+  exit 1
+fi
+
+# --- helpers ---
+
+# port_in_use PORT -> returns 0 (true) if something is listening on PORT.
+# Uses lsof when available (most reliable on macOS/Linux); falls back to bash's
+# /dev/tcp, where a successful connect means the port is taken.
+port_in_use() {
+  local port="$1"
+  if command -v lsof >/dev/null 2>&1; then
+    lsof -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1
+    return
+  fi
+  (exec 3<>"/dev/tcp/127.0.0.1/${port}") >/dev/null 2>&1 && { exec 3>&- 3<&-; return 0; }
+  return 1
+}
+
+# find_free_port START [EXCLUDE] -> first free port >= START, skipping EXCLUDE.
+find_free_port() {
+  local port="$1" exclude="${2:-}"
+  while :; do
+    if [[ "$port" == "$exclude" ]] || port_in_use "$port"; then
+      port=$((port + 1))
+      continue
+    fi
+    echo "$port"
+    return 0
+  done
+}
+
+# read_env KEY -> value of KEY in .env, or empty if absent.
+read_env() {
+  [[ -f "$ENV_FILE" ]] || return 0
+  local line
+  line="$(grep -E "^$1=" "$ENV_FILE" | tail -n1 || true)"
+  echo "${line#*=}"
+}
+
+# upsert_env KEY VALUE -> set KEY=VALUE in .env, preserving other lines.
+upsert_env() {
+  local key="$1" value="$2" tmp
+  touch "$ENV_FILE"
+  if grep -qE "^${key}=" "$ENV_FILE"; then
+    tmp="$(mktemp)"
+    grep -vE "^${key}=" "$ENV_FILE" >"$tmp"
+    mv "$tmp" "$ENV_FILE"
+  fi
+  printf '%s=%s\n' "$key" "$value" >>"$ENV_FILE"
+}
+
+# --- pick ports ---
+# Prefer the port already recorded in .env if it's still free; otherwise probe from
+# the requested (or default) starting point.
+MCP_START="${MCP_HOST_PORT:-$(read_env MCP_HOST_PORT)}"
+MCP_START="${MCP_START:-3001}"
+API_START="${WEKA_API_HOST_PORT:-$(read_env WEKA_API_HOST_PORT)}"
+API_START="${API_START:-7070}"
+
+if port_in_use "$MCP_START"; then
+  MCP_PORT="$(find_free_port "$MCP_START")"
+else
+  MCP_PORT="$MCP_START"
+fi
+
+# weka-api must not collide with the mcp port.
+if [[ "$API_START" == "$MCP_PORT" ]] || port_in_use "$API_START"; then
+  API_PORT="$(find_free_port "$API_START" "$MCP_PORT")"
+else
+  API_PORT="$API_START"
+fi
+
+echo "==> Host ports: weka-mcp ${MCP_PORT}, weka-api ${API_PORT}"
+upsert_env MCP_HOST_PORT "$MCP_PORT"
+upsert_env WEKA_API_HOST_PORT "$API_PORT"
+echo "    (persisted to ${ENV_FILE})"
+
+# --- bring it up ---
+echo "==> docker compose up --build -d"
+( cd "$ROOT" && docker compose up --build -d )
+
+# --- wait for health (covers JVM + WEKA cold start) ---
+HEALTH="http://localhost:${MCP_PORT}/healthz"
+echo "==> Waiting for ${HEALTH}"
+for _ in $(seq 1 60); do
+  if curl -fsS "$HEALTH" 2>/dev/null | grep -q '"ok":true'; then
+    echo ""
+    echo "==> Up."
+    echo "    MCP endpoint:  http://localhost:${MCP_PORT}/mcp"
+    echo "    MCP health:    http://localhost:${MCP_PORT}/healthz"
+    echo "    weka-api:      http://localhost:${API_PORT}/health"
+    echo ""
+    echo "Tear down with:  bin/remove"
+    exit 0
+  fi
+  sleep 2
+done
+
+echo "ERROR: weka-mcp did not report healthy within ~2 min." >&2
+echo "       Check logs:  cd ${ROOT} && docker compose logs" >&2
+exit 1
