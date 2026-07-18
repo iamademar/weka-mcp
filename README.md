@@ -55,38 +55,6 @@ docker compose down -v    # also wipe the weka-models + weka-data volumes
 
 ---
 
-## Try it — a full train → predict cycle through MCP
-
-The HTTP transport speaks JSON-RPC over `POST /mcp` (stateless: each call is self-contained). The
-`weka_upload_dataset` tool reads a file path **inside the weka-mcp container**, so stage a sample
-ARFF there first:
-
-```bash
-docker compose cp weka-api/src/test/resources/iris.arff weka-mcp:/tmp/iris.arff
-
-MCP=localhost:3001/mcp
-H=(-H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream')
-
-# 1. upload the iris dataset
-curl -s "${H[@]}" $MCP -d '{"jsonrpc":"2.0","id":1,"method":"tools/call",
-  "params":{"name":"weka_upload_dataset","arguments":{"filePath":"/tmp/iris.arff","name":"iris"}}}'
-
-# 2. train a J48 decision tree
-curl -s "${H[@]}" $MCP -d '{"jsonrpc":"2.0","id":2,"method":"tools/call",
-  "params":{"name":"weka_train","arguments":{"dataset":"iris",
-    "algorithm":"weka.classifiers.trees.J48","modelName":"iris-j48"}}}'
-
-# 3. predict a class for one instance  →  "Iris-setosa"
-curl -s "${H[@]}" $MCP -d '{"jsonrpc":"2.0","id":3,"method":"tools/call",
-  "params":{"name":"weka_predict","arguments":{"model":"iris-j48",
-    "instances":[{"sepallength":5.1,"sepalwidth":3.5,"petallength":1.4,"petalwidth":0.2}]}}}'
-```
-
-Step 3 returns `{"predictedClass":"Iris-setosa","distribution":{"Iris-setosa":1,...}}`. Other sample
-datasets ship in `weka-api/src/test/resources/`: `weather.nominal.arff`, `cpu.numeric.arff`.
-
----
-
 ## Connecting an MCP client
 
 ### HTTP transport (the deployed shape)
